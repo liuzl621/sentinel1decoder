@@ -191,7 +191,15 @@ class Level0File:
         current_chunk_header = self._packet_metadata.loc[[acquisition_chunk]]
         chunk_header = current_chunk_header.iloc[0]
         rank = int(chunk_header.get(fn.RANK_DECODED))
-        if acquisition_chunk > 0:
+        if acquisition_chunk == 0:
+            warnings.warn(
+                "Rank data in acquisition_chunk 0 is invalid.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            rank_header = current_chunk_header.head(rank)
+            rank_data = self._decoder.decode_packets(rank_header)
+        else:
             # Taking into account some special 8-packet length chunks, they belong to rank echoes.
             previous_chunk_header = self._packet_metadata.loc[[acquisition_chunk - 1]]
             if len(previous_chunk_header) == 8 and previous_chunk_header[fn.SIGNAL_TYPE_DECODED].iloc[0] == SignalType.ECHO:
@@ -203,9 +211,9 @@ class Level0File:
                     rank_data = np.concatenate((last_rank_data, current_rank_data), axis=0)
                 else:
                     rank_data = last_rank_data
-        else:
-            rank_header = current_chunk_header.head(rank)
-            rank_data = self._decoder.decode_packets(rank_header)
+            else:
+                rank_header = current_chunk_header.head(rank)
+                rank_data = self._decoder.decode_packets(rank_header)
 
         return rank_data
 
