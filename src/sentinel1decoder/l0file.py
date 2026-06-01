@@ -180,6 +180,36 @@ class Level0File:
 
         return self._acquisition_chunk_data_dict[acquisition_chunk]  # type: ignore
 
+    def get_acquisition_chunk_rank_data(self, acquisition_chunk: int, try_load_from_file: bool = True, switch: bool = False) -> np.ndarray:
+
+        if try_load_from_file:
+            save_file_name = self._generate_acquisition_chunk_rank_cache_filename(acquisition_chunk)
+            try:
+                rank_data = np.load(save_file_name)
+                return rank_data
+            except (OSError, FileNotFoundError, ValueError):
+                pass
+            
+        if switch:
+            last_chunk_header = self._packet_metadata.loc[[acquisition_chunk - 1]]
+            last_rank_data = self._decoder.decode_packets(last_chunk_header)
+        acquisition_chunk_header = self._packet_metadata.loc[[acquisition_chunk]]
+        first_packet = acquisition_chunk_header.iloc[0]
+        if switch:
+            rank = first_packet.get('Rank') - 8
+            print(f"{rank = }")
+        else:
+            rank = first_packet.get('Rank')
+        if rank != 0:
+            rank_header = acquisition_chunk_header.head(rank)
+            rank_data = self._decoder.decode_packets(rank_header)
+            if switch:
+                rank_data = np.concatenate((last_rank_data, rank_data), axis=0)
+        else:
+            rank_data = last_rank_data
+
+        return rank_data
+
     def save_acquisition_chunk_data(self, acquisition_chunk: int) -> None:
         """Save the radar echoes for a given acquisition chunk to a .npy file.
 
