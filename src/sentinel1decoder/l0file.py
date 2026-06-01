@@ -180,26 +180,25 @@ class Level0File:
 
         return self._acquisition_chunk_data_dict[acquisition_chunk]  # type: ignore
 
-    def get_acquisition_chunk_rank_data(self, acquisition_chunk: int, try_load_from_file: bool = True, switch: bool = False) -> np.ndarray:
-
-        if try_load_from_file:
-            save_file_name = self._generate_acquisition_chunk_rank_cache_filename(acquisition_chunk)
-            try:
-                rank_data = np.load(save_file_name)
-                return rank_data
-            except (OSError, FileNotFoundError, ValueError):
-                pass
-            
+    def get_acquisition_chunk_rank_data(self, acquisition_chunk: int, switch: bool = False) -> np.ndarray:
+        """Get the rank data for a given acquisition chunk.
+        
+        Args:
+            acquisition_chunk: The acquisition chunk ID (0-indexed).
+            switch: If True, the rank data from the previous acquisition chunk will be concatenated to the current rank data.
+        Returns:
+            The rank data for the given acquisition chunk.
+        """
         if switch:
             last_chunk_header = self._packet_metadata.loc[[acquisition_chunk - 1]]
             last_rank_data = self._decoder.decode_packets(last_chunk_header)
         acquisition_chunk_header = self._packet_metadata.loc[[acquisition_chunk]]
-        first_packet = acquisition_chunk_header.iloc[0]
+        chunk_header = acquisition_chunk_header.iloc[0]
         if switch:
-            rank = first_packet.get('Rank') - 8
+            rank = chunk_header.get('Rank') - 8
             print(f"{rank = }")
         else:
-            rank = first_packet.get('Rank')
+            rank = chunk_header.get('Rank')
         if rank != 0:
             rank_header = acquisition_chunk_header.head(rank)
             rank_data = self._decoder.decode_packets(rank_header)
@@ -207,7 +206,7 @@ class Level0File:
                 rank_data = np.concatenate((last_rank_data, rank_data), axis=0)
         else:
             rank_data = last_rank_data
-
+        
         return rank_data
 
     def save_acquisition_chunk_data(self, acquisition_chunk: int) -> None:
