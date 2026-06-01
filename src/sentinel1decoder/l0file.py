@@ -10,6 +10,7 @@ import pandas as pd
 from sentinel1decoder import _field_names as fn
 from sentinel1decoder.l0decoder import Level0Decoder
 from sentinel1decoder.utilities import read_subcommed_data
+from sentinel1decoder.enums import SignalType
 
 
 class Level0File:
@@ -180,33 +181,32 @@ class Level0File:
 
         return self._acquisition_chunk_data_dict[acquisition_chunk]  # type: ignore
 
-    def get_acquisition_chunk_rank_data(self, acquisition_chunk: int, switch: bool = False) -> np.ndarray:
+    def get_acquisition_chunk_rank_data(self, acquisition_chunk: int) -> np.ndarray:
         """Get the rank data for a given acquisition chunk.
-        
         Args:
             acquisition_chunk: The acquisition chunk ID (0-indexed).
-            switch: If True, the rank data from the previous acquisition chunk will be concatenated to the current rank data.
         Returns:
             The rank data for the given acquisition chunk.
         """
-        if switch:
-            last_chunk_header = self._packet_metadata.loc[[acquisition_chunk - 1]]
-            last_rank_data = self._decoder.decode_packets(last_chunk_header)
-        acquisition_chunk_header = self._packet_metadata.loc[[acquisition_chunk]]
-        chunk_header = acquisition_chunk_header.iloc[0]
-        if switch:
-            rank = chunk_header.get('Rank') - 8
-            print(f"{rank = }")
+        current_chunk_header = self._packet_metadata.loc[[acquisition_chunk]]
+        chunk_header = current_chunk_header.iloc[0]
+        rank = int(chunk_header.get(fn.RANK_DECODED))
+        if acquisition_chunk > 0:
+            # Taking into account some special 8-packet length chunks, they belong to rank echoes.
+            previous_chunk_header = self._packet_metadata.loc[[acquisition_chunk - 1]]
+            if len(previous_chunk_header) == 8 and previous_chunk_header[fn.SIGNAL_TYPE_DECODED].iloc[0] == SignalType.ECHO:
+                last_rank_data = self._decoder.decode_packets(previous_chunk_header)
+                rank = rank - 8
+                if rank != 0:
+                    rank_header = current_chunk_header.head(rank)
+                    current_rank_data = self._decoder.decode_packets(rank_header)
+                    rank_data = np.concatenate((last_rank_data, current_rank_data), axis=0)
+                else:
+                    rank_data = last_rank_data
         else:
-            rank = chunk_header.get('Rank')
-        if rank != 0:
-            rank_header = acquisition_chunk_header.head(rank)
+            rank_header = current_chunk_header.head(rank)
             rank_data = self._decoder.decode_packets(rank_header)
-            if switch:
-                rank_data = np.concatenate((last_rank_data, rank_data), axis=0)
-        else:
-            rank_data = last_rank_data
-        
+
         return rank_data
 
     def save_acquisition_chunk_data(self, acquisition_chunk: int) -> None:
